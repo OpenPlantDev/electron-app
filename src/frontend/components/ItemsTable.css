@@ -1,0 +1,12 @@
+.componentsTable, .componentsTable th, .componentsTable td {
+  border: solid 1px black;
+  border-collapse: collapse;
+}
+
+.componentsTable {
+  margin-top: 10px;
+}
+
+.componentsTable th, .componentsTable td {
+  padding: 10px;
+}
