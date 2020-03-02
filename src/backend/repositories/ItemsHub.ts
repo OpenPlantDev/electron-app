@@ -1,23 +1,34 @@
 import { ItemsRepository } from "./ItemsRepository";
 import { Item } from "../../common/models/Item";
-import { Hub } from "../services/hub";
+import { Api, ApiError } from "../services/api";
 import { IQueryOptions } from "../services/queryOptions";
+import { AuthServiceProvider } from "../services/authService";
 
-export class ItemsHub implements ItemsRepository {
+export class ItemsHub implements ItemsRepository, AuthServiceProvider {
 
   private _resourceName = "items";
-  private _hub: Hub;
+  private _api: Api;
 
   constructor(baseUrl: string) {
-    this._hub = new Hub(baseUrl);
+    this._api = new Api(baseUrl);
   }
 
-  public async getItems(queryOptions?: IQueryOptions): Promise<Item[] | Error> {
-    const query = `${this._resourceName}${this._hub.getQueryString(queryOptions)}`;
+  public async login(userName: string, password: string): Promise<string | ApiError> {
+    const result = await this._api.login(userName, password);
+    return result;
+  }
+
+  public async validateToken(token: string): Promise<boolean | ApiError> {
+    const result = await this._api.validateToken(token);
+    return result;
+  }
+
+  public async getItems(queryOptions?: IQueryOptions, token?: string): Promise<Item[] | ApiError> {
+    const query = `${this._resourceName}${this._api.getQueryString(queryOptions)}`;
     console.log(`query = ${query}`);
     try {
-      const result = await this._hub.getData(query);
-      if (result instanceof Error) {
+      const result = await this._api.get(query, token);
+      if (result instanceof ApiError) {
         return result;
       }
       return(result);
@@ -26,16 +37,16 @@ export class ItemsHub implements ItemsRepository {
     }
   }
 
-  public async getItemById(id: string): Promise<Item | Error> {
+  public async getItemById(id: string): Promise<Item | ApiError> {
     const query = `${this._resourceName}/${id}`;
     console.log(`query = ${query}`);
     try {
-      const result = await this._hub.getData(query);
-      if (result instanceof Error) {
+      const result = await this._api.get(query);
+      if (result instanceof ApiError) {
         return result;
       }
       if (result.length <= 0) {
-        return new Error(`No record found for id:[${id}]`);
+        return new ApiError(404, `No record found for id:[${id}]`);
       }
       return(result[0]);
     } catch (err) {
@@ -43,15 +54,15 @@ export class ItemsHub implements ItemsRepository {
     }
   }
 
-  public async addItem(comp: Item): Promise<string | Error> {
-    throw new Error('Not implemented');
+  public async addItem(comp: Item): Promise<string | ApiError> {
+    throw new ApiError(501, 'Not implemented');
   }
 
   public async updateItem(comp: Item): Promise<Item | Error> {
-    throw new Error('Not implemented');
+    throw new ApiError(501, 'Not implemented');
   }
 
   public async deleteItem(id: string): Promise<boolean | Error> {
-    throw new Error('Not implemented');
+    throw new ApiError(501, 'Not implemented');
   }
 }

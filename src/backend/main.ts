@@ -1,14 +1,17 @@
 import {app, BrowserWindow, ipcMain} from "electron";
-// import {SqliteConnection} from "./services/sqliteConnection";
 import {Item} from "../common/models/Item";
 import { IQueryOptions } from "./services/queryOptions";
-// import {ComponentsDb} from "./repositories/ComponentsDb";
-import { ItemsHub } from "./repositories/ItemsHub";
-import { ItemsRepository } from "./repositories/ItemsRepository";
+import { AuthService, AuthServiceProvider } from "./services/authService";
+import { ItemsHubCredentials, ItemsHubConnection } from "./services/itemsHubConnection";
+import { ApiError } from "./services/api";
+// import {SqliteConnection} from "./services/sqliteConnection";
+// import {IVendorRepository} from "./repositories/vendorRepository";
 
 let mainWindow: BrowserWindow | null;
-let compsHub: ItemsRepository | undefined;
-// let compsDb: IComponentsRepository | undefined;
+let itemsHubConnection: ItemsHubConnection | undefined;
+// let initVendorRepo: IVendorRepository | undefined;
+
+const credentials: ItemsHubCredentials = {userName: "dan.nichols@bentley.com", password: ""};
 
 const createWindow = () => {
 
@@ -39,13 +42,35 @@ const createWindow = () => {
 
 };
 
-const initHub = () => {
-  compsHub = new ItemsHub('http://localhost:4060/api/');
+// This is a callback for the ItemsHubConnection to login when required
+// It should have a UI to prompt for userName and password, but for now it is hard-coded
+// Hard-coded password is initially incorrect, then corrected for second attempt
+const login = async (authService: AuthServiceProvider): Promise<string | Error> => {
+
+  console.log(`Attempting Login with credentials: userName=${credentials.userName} password=${credentials.password}`);
+  let loginResult = await AuthService.Instance.login(authService, credentials.userName, credentials.password);
+  if(loginResult instanceof ApiError) {
+    console.log(`Login failed: ${loginResult.message}`);
+    credentials.password = "123";
+    console.log(`Attempting Login with credentials: userName=${credentials.userName} password=${credentials.password}`);
+    loginResult = await AuthService.Instance.login(authService, credentials.userName, credentials.password);
+    if(loginResult instanceof ApiError) {
+      console.log(`Login failed: ${loginResult.message}`);
+    } else {
+      console.log(`Login suceeded`);
+    }
+  }
+
+  return loginResult;
 }
 
-// const initDb = () => {
-//   const sqliteConnection: SqliteConnection = new SqliteConnection("model.db");
-//   compsDb = new ComponentsDb(sqliteConnection);
+const initHubConnection = () => {
+  itemsHubConnection = new ItemsHubConnection('http://localhost:4060/api/', login);
+}
+
+// const initVendorDb = () => {
+//   const sqliteConnection: SqliteConnection = new SqliteConnection("vendor.db");
+//   vendorDb = new VendorDb(sqliteConnection);
 
 // };
 
@@ -53,8 +78,8 @@ app.on("ready", () => {
   console.log("app is ready");
   console.log(app.getAppPath());
   createWindow();
-  initHub();
-  // initDb();
+  initHubConnection();
+  // initVendorRepo();
 
 });
 
@@ -68,17 +93,18 @@ ipcMain.on("refresh-request", async (sender: any, queryOptions: IQueryOptions) =
 
   let data: Item[] | Error = new Error ("nothing happening");
 
-  if(!compsHub) {
+  if(!itemsHubConnection) {
     throw new Error("Hub is not defined");
   }
-  const result = await compsHub.getItems(queryOptions);
-  console.log(result);
 
-  // if (!compsDb) {
-  //   throw new Error("compsDb is not defined");
+  const result = await itemsHubConnection.getItems(queryOptions);
+  // console.log(result);
+
+  // if (!vendorRepo) {
+  //   throw new Error("vendorRepo is not defined");
   // }
-  // console.log("Read data from compsDb");
-  // const result = await compsDb.getComponents(queryOptions);
+  // console.log("Read data from VendorRepo");
+  // const result = await compsDb.getVendorData();
 
   if (result instanceof Error) {
     data = result;
