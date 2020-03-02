@@ -1,15 +1,18 @@
 import {app, BrowserWindow, ipcMain} from "electron";
 import {Item} from "../common/models/Item";
-import { IQueryOptions } from "./services/queryOptions";
+import { IQueryOptions, QueryOptions } from "./services/queryOptions";
 import { AuthService, AuthServiceProvider } from "./services/authService";
 import { ItemsHubCredentials, ItemsHubConnection } from "./services/itemsHubConnection";
 import { ApiError } from "./services/api";
+import * as socketio from "socket.io-client";
 // import {SqliteConnection} from "./services/sqliteConnection";
 // import {IVendorRepository} from "./repositories/vendorRepository";
 
+const baseUrl = "http://localhost:4060/";
 let mainWindow: BrowserWindow | null;
 let itemsHubConnection: ItemsHubConnection | undefined;
 // let initVendorRepo: IVendorRepository | undefined;
+let socket: SocketIOClient.Socket;
 
 const credentials: ItemsHubCredentials = {userName: "dan.nichols@bentley.com", password: ""};
 
@@ -65,7 +68,7 @@ const login = async (authService: AuthServiceProvider): Promise<string | Error> 
 }
 
 const initHubConnection = () => {
-  itemsHubConnection = new ItemsHubConnection('http://localhost:4060/api/', login);
+  itemsHubConnection = new ItemsHubConnection(`${baseUrl}api/`, login);
 }
 
 // const initVendorDb = () => {
@@ -74,24 +77,37 @@ const initHubConnection = () => {
 
 // };
 
+const initSocketIO = () => {
+  socket = socketio.connect(baseUrl);
+  socket.on("DbUpdated", async (msg: any) => {
+    console.log("Received DbUpdated via SocketIO");
+    const data = await getData(QueryOptions.getOptions(""));
+    console.log(`Number of components found: ${ data instanceof Error ? 0 : data.length}`);
+    await sendData(data);
+  });
+}
+
 app.on("ready", () => {
   console.log("app is ready");
   console.log(app.getAppPath());
   createWindow();
+  initSocketIO();
   initHubConnection();
   // initVendorRepo();
 
 });
 
 ipcMain.on("refresh-request", async (sender: any, queryOptions: IQueryOptions) => {
-
   console.log("Received refresh-request!");
-  console.log(queryOptions);
-  if (!mainWindow) {
-    throw new Error("mainWindow is not defined");
-  }
+  const data = await getData(queryOptions);
+  console.log(`Number of components found: ${ data instanceof Error ? 0 : data.length}`);
+  await sendData(data);
+});
 
-  let data: Item[] | Error = new Error ("nothing happening");
+const getData = async (queryOptions: IQueryOptions): Promise<Item[] | ApiError> => {
+  console.log(queryOptions);
+
+  let data: Item[] | ApiError = new ApiError (500, "nothing happening");
 
   if(!itemsHubConnection) {
     throw new Error("Hub is not defined");
@@ -112,7 +128,14 @@ ipcMain.on("refresh-request", async (sender: any, queryOptions: IQueryOptions) =
     data = result;
   }
 
+  return data;
+}
+
+const sendData = async (data: any) => {
+  if (!mainWindow) {
+    throw new Error("mainWindow is not defined");
+  }
   console.log("Sending data-updated!!");
-  console.log(`Number of components found: ${ data instanceof Error ? 0 : data.length}`);
   mainWindow.webContents.send("data-updated", data);
-});
+
+}
